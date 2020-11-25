@@ -1,0 +1,243 @@
+---
+title: "Kogmoji Throwdown"
+author: "Jennifer Brussow"
+output: html_document
+runtime: shiny
+---
+
+
+<!--html_preserve-->
+<style>
+
+* {
+  font-family: "Helvetica", Helvetica, sans-serif;
+}
+
+h1 {
+  font-family: "Sentinel", Sentinel, serif;
+}
+
+h2 {
+  font-family: "Sentinel", Sentinel, serif;
+}
+
+h3 {
+  font-family: "HelveticaNeueLT Std", Helvetica, sans-serif;
+  font-weight: bold;
+}
+
+h4 {
+  font-family: "HelveticaNeueLT Std", Helvetica, sans-serif;
+  font-weight: bold;
+}
+
+h5 {
+  font-family: "HelveticaNeueLT Std", Helvetica, sans-serif;
+  font-weight: bold;
+}
+
+
+.column {
+  float: left;
+  padding: 50px;
+}
+
+.left {
+  width: 50%;
+}
+
+.right {
+  width: 50%;
+}
+
+.row:after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+@media screen and (max-width: 600px) {
+  .column {
+    width: 100%;
+  }
+}
+</style>
+
+
+<!--/html_preserve-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+
+library(rvest)
+library(stringr)
+library(XML)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(flextable)
+library(emo)
+
+palette <- c("#264653","#2a9d8f","#8ab17d","#e9c46a","#f4a261","#ee8959","#e76f51")
+
+
+options(stringsAsFactors = FALSE)
+
+bracket_links <- data.frame(
+  link = c("https://www.polltab.com/bracket-poll/URrvtsIld9",
+            "https://www.polltab.com/bracket-poll/2AUgl6QF-N",
+            "https://www.polltab.com/bracket-poll/tKFzVsuwVh",
+            "https://www.polltab.com/bracket-poll/nPYwNZxY24",
+            "https://www.polltab.com/bracket-poll/1OlCW40NWW",
+            "https://www.polltab.com/bracket-poll/mMlfvDpIal",
+            "https://www.polltab.com/bracket-poll/jKtNX35kKL",
+            "https://www.polltab.com/bracket-poll/vsWlnB7ri4"),
+  bracket = seq(1:8))
+
+rounds <- 1
+
+kogmoji_data <- NULL
+
+for(i in seq_len(nrow(bracket_links))){
+  link <- bracket_links[i, "link"]
+  
+  bracket_page <- read_html(link)
+  
+  # html_structure(bracket_page)
+  
+  for(round in rounds){
+    
+    items <- bracket_page %>%
+      html_nodes(css = paste0(".round", round)) %>%
+      html_nodes(css = ".bracketpoll-group-bracketbox") %>%
+      html_nodes(css = ".bracketbox-team-item-label-text") %>%
+      html_text("div")
+    
+    
+    votes <- bracket_page %>%
+      html_nodes(css = paste0(".round", round)) %>%
+      html_nodes(css = ".bracketpoll-group-bracketbox") %>%
+      html_nodes(css = ".bracketbox-team-item-label-vote-text") %>%
+      html_text("span")
+    
+    out <- data.frame(bracket = bracket_links[i, "bracket"],
+                      round = round,
+                      pairing = rep(1:(length(items)/2), each = 2),
+                      kogmoji = items,
+                      votes = votes) %>%
+      mutate(votes = str_replace(votes, " votes", "")) %>%
+      mutate(votes = str_replace(votes, " vote", "")) %>%
+      mutate(votes = as.numeric(votes))
+    
+    kogmoji_data <- bind_rows(kogmoji_data, out)
+  }
+}
+
+
+kogmoji_data <- kogmoji_data %>%
+  group_by(bracket, round, pairing) %>%
+  mutate(pct = votes/sum(votes)*100) %>% 
+  ungroup() %>%
+  mutate(bracket = factor(paste0("Bracket ", bracket))) %>%
+  mutate(round = factor(paste0("Round ", round)))
+
+```
+
+Welcome to the results of the **Great Kogmoji Throwdown** `r emo::ji("boxing")`, which will determine the Kognito-est Slack emoji once and for all. Behold, the data!
+
+## Proportional results by bracket & round `r emo::ji("fire")`
+
+The visualization below shows the results for each of the brackets for each completed round. This is easier to look at than all the results at once, but if you happen to want that, it's at the end of this page.
+
+```{r bar_shiny, echo=FALSE}
+
+inputPanel(
+  selectInput("bracket", label = "Which Bracket?",
+              choices = unique(kogmoji_data$bracket), selected = "Bracket 1"),
+
+  selectInput("round", label = "Which Round?",
+              choices = unique(kogmoji_data$round), selected = "Round 1")
+)
+
+renderPlot({
+
+  ggplot(filter(kogmoji_data, bracket == input$bracket & round == input$round)) +
+  geom_bar(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, fill = factor(pairing)), stat = "identity") +
+  geom_text(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, label = paste0(round(pct, 1), "%")),
+            nudge_x = 5) +
+  theme_bw() +
+  facet_grid(bracket ~ round, scales = "free_y", switch = "y", space = "free") +
+  labs(title = paste0("Kogmoji Showdown: ", input$bracket,
+                      ", ", input$round),
+       x = "Percent of votes received",
+       y = "",
+       fill = "Matchup") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 1)) +
+  scale_fill_manual(values = palette[c(7, 1, 4, 2, 5, 3, 6)])
+})
+```
+
+### STATS OF INTEREST `r emo::ji("thought_balloon")`
+
+#### Top performers `r emo::ji("trophy")`
+
+```{r top_perf}
+top_performers <- kogmoji_data %>%
+  slice_max(n = 10, pct, with_ties = TRUE) %>%
+  arrange(desc(pct))
+
+top_performers %>%
+  flextable() %>% 
+  add_header_lines("Top performers") %>%
+  autofit()
+
+```
+
+#### Worst performers `r emo::ji("trash")`
+
+```{r worst_perf}
+
+worst_performers <- kogmoji_data %>%
+  slice_min(n = 10, pct, with_ties = TRUE) %>%
+  arrange(pct)
+
+worst_performers %>%
+  flextable() %>% 
+  add_header_lines("Worst performers") %>%
+  autofit()
+
+```
+
+#### Close races `r emo::ji("horse")`
+
+```{r closest}
+close_races <- kogmoji_data %>%
+  filter(pct > 45 & pct < 55)
+
+close_races %>%
+  flextable() %>% 
+  add_header_lines("Close races") %>%
+  autofit()
+```
+
+
+### MASSIVE CHART `r emo::ji("elephant")`
+Here's the bigger chart:
+
+```{r bar_all, fig.height=12}
+ggplot(kogmoji_data) +
+  geom_bar(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, fill = factor(pairing)), stat = "identity") +
+  geom_text(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, label = paste0(round(pct, 1), "%")),
+            nudge_x = 5, size = 3) +
+  theme_bw() +
+  facet_grid(bracket ~ round, scales = "free_y", switch = "y", space = "free") +
+  labs(title = "Kogmoji Showdown: Complete Results",
+       x = "Percent of votes received",
+       y = "",
+       fill = "Matchup") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 1)) +
+  scale_fill_manual(values = palette[c(7, 1, 4, 2, 5, 3, 6)])
+```
