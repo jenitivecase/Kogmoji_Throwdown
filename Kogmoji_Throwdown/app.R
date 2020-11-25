@@ -117,9 +117,12 @@ ui <- fluidPage(
 # Define server logic required to draw a histogram
 server <- function(input, output) {
 
-   
+    bracket_dat <- reactive({
+        filter(kogmoji_data, bracket == input$bracket & round == input$round)
+    })
+    
     output$bracketplot = renderPlot({
-        ggplot(filter(kogmoji_data, bracket == input$bracket & round == input$round)) +
+        ggplot(bracket_dat()) +
             geom_bar(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, fill = factor(pairing)), stat = "identity") +
             geom_text(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, label = paste0(round(pct, 1), "%")),
                       nudge_x = 5) +
@@ -136,22 +139,19 @@ server <- function(input, output) {
     })
     
     output$top_performers = renderTable({
-        kogmoji_data %>%
-            filter(bracket == input$bracket & round == input$round) %>%
+        bracket_dat() %>%
             slice_max(n = 3, pct, with_ties = TRUE) %>%
             arrange(desc(pct))
     })
     
     output$worst_performers = renderTable({
-        kogmoji_data %>%
-            filter(bracket == input$bracket & round == input$round) %>%
+        bracket_dat() %>%
             slice_min(n = 3, pct, with_ties = TRUE) %>%
             arrange(desc(pct))
     })
     
     output$close_races = renderTable({
-        kogmoji_data %>%
-            filter(bracket == input$bracket & round == input$round) %>%
+        bracket_dat() %>%
             filter(pct > 45 & pct < 55)
     })
 
