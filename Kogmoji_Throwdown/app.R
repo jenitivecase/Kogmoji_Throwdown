@@ -8,8 +8,6 @@
 #
 
 library(shiny)
-
-library(plotly)
 library(rvest)
 library(stringr)
 library(XML)
@@ -115,28 +113,40 @@ ui <- fluidPage(
 
     # Application title
     titlePanel("Kogmoji Throwdown"),
-
     
-    sidebarLayout(
-        sidebarPanel(
-            selectInput("bracket", label = "Which Bracket?",
-                        choices = unique(kogmoji_data$Bracket), selected = "Bracket 1"),
-            
-            selectInput("round", label = "Which Round?",
-                        choices = unique(kogmoji_data$Round), selected = "Round 1")
-        ),
+   
 
-       
-        mainPanel(
-            
-            tabsetPanel(type = "tabs",
-                        tabPanel("Interactive Overall Plot", plotlyOutput("line_plot", height = "600px")),
-                        tabPanel("Bracket Plot", plotOutput("bracketplot", height = "600px")),
-                        tabPanel("Close Races", tableOutput("close_races")),
-                        tabPanel("Top Performers", tableOutput("top_performers")),
-                        tabPanel("Worst Performers", tableOutput("worst_performers"))
-            )
-            
+    fluidRow(
+        column(8, offset = 2, 
+               wellPanel(
+                   plotOutput("line_plot", height = "600px")
+               ))
+    ),
+    
+    fluidRow(
+        
+        column(3, offset = 1,
+               wellPanel(
+                   selectInput("bracket", label = "Which Bracket?",
+                               choices = unique(kogmoji_data$Bracket), selected = "Bracket 1"),
+                   
+                   selectInput("round", label = "Which Round?",
+                               choices = unique(kogmoji_data$Round), selected = "Round 1")
+               )
+        ),
+               
+        
+        column(7,
+               
+               tabsetPanel(type = "tabs",
+                           
+                           tabPanel("Bracket Plot", plotOutput("bracketplot", 
+                                                               width = "800px", height = "600px")),
+                           tabPanel("Close Races", tableOutput("close_races")),
+                           tabPanel("Top Performers", tableOutput("top_performers")),
+                           tabPanel("Worst Performers", tableOutput("worst_performers"))
+               )
+               
         )
     )
 )
@@ -185,18 +195,26 @@ server <- function(input, output) {
             filter(Percent >= 45 & Percent <= 55)
     })
     
-    output$line_plot = renderPlotly(
-        ggplotly(
-            ggplot(kogmoji_data) +
-                geom_line(aes(x = Round, y = Percent, group = Kogmoji,
-                              color = Kogmoji), size = 0.5) +
-                geom_point(aes(x = Round, y = Percent, group = Kogmoji),
-                           alpha = 0.5, color = "darkgray") +
-                theme_bw() +
-                theme(legend.position = "none") +
-                labs(title = "Overall Results by Round",
-                     subtitle = "Hover over points for interactive labels!") 
-            )
+    output$line_plot = renderPlot(
+        
+        ggplot(kogmoji_data) +
+            geom_line(aes(x = Round, y = Percent, group = Kogmoji,
+                          color = Kogmoji), size = 0.5) +
+            geom_image(data = kogmoji_data, 
+                       aes(x = Round, y = Percent, group = Kogmoji,
+                           image = kogmoji_url),
+                       size = .02, #by = "height",
+                       position = position_jitter(width = 0.1, height = 2)) +
+            ggrepel::geom_text_repel(data = filter(kogmoji_data, highlight == 1),
+                                     aes(x = Round, y = Percent, group = Kogmoji,
+                                         label = paste0(Kogmoji, ": ", round(Percent, 1), "%")),
+                                     size = 2) +
+            theme_bw() +
+            theme(legend.position = "none", 
+                  panel.grid.major.x = element_blank()) +
+            labs(title = "Overall Results by Round",
+                 x = "")
+        
     )
 
 }
