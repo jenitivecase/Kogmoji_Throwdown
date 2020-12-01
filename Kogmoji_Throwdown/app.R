@@ -9,6 +9,7 @@
 
 library(shiny)
 
+library(plotly)
 library(rvest)
 library(stringr)
 library(XML)
@@ -18,6 +19,7 @@ library(ggplot2)
 library(forcats)
 library(flextable)
 library(emo)
+library(ggimage)
 
 palette <- c("#264653","#2a9d8f","#8ab17d","#e9c46a","#f4a261","#ee8959","#e76f51")
 
@@ -35,7 +37,7 @@ bracket_links <- data.frame(
              "https://www.polltab.com/bracket-poll/vsWlnB7ri4"),
     bracket = seq(1:8))
 
-rounds <- 1
+rounds <- 1:3
 
 kogmoji_data <- NULL
 
@@ -61,10 +63,18 @@ for(i in seq_len(nrow(bracket_links))){
             html_nodes(css = ".bracketbox-team-item-label-vote-text") %>%
             html_text("span")
         
+        image_urls <- bracket_page %>%
+            html_nodes(css = paste0(".round", round)) %>%
+            html_nodes(css = ".bracketpoll-group-bracketbox") %>%
+            html_nodes(css = ".bracketbox-team-item-image") %>% 
+            html_nodes(xpath = "img") %>% 
+            html_attr("src")
+        
         out <- data.frame(bracket = bracket_links[i, "bracket"],
                           round = round,
-                          pairing = rep(1:(length(items)/2), each = 2),
+                          Matchup = rep(1:(length(items)/2), each = 2),
                           kogmoji = items,
+                          kogmoji_url = image_urls,
                           votes = votes) %>%
             mutate(votes = str_replace(votes, " votes", "")) %>%
             mutate(votes = str_replace(votes, " vote", "")) %>%
@@ -76,11 +86,27 @@ for(i in seq_len(nrow(bracket_links))){
 
 
 kogmoji_data <- kogmoji_data %>%
-    group_by(bracket, round, pairing) %>%
-    mutate(pct = votes/sum(votes)*100) %>% 
+    group_by(bracket, round, Matchup) %>%
+    mutate(Percent = votes/sum(votes)*100) %>% 
+    mutate(Winner = case_when(Percent == max(Percent) ~ 1,
+                              TRUE ~ 0)) %>%
     ungroup() %>%
+    group_by(kogmoji) %>%
+    mutate(max_round = max(round)) %>%
+    ungroup %>%
     mutate(bracket = factor(paste0("Bracket ", bracket))) %>%
-    mutate(round = factor(paste0("Round ", round)))
+    mutate(round = factor(paste0("Round ", round))) %>%
+    rename(Bracket = bracket,
+           Round = round,
+           Matchup = Matchup,
+           Kogmoji = kogmoji,
+           Votes = votes,
+           Percent = Percent) %>%
+    group_by(Kogmoji) %>%
+    mutate(Percent = round(Percent, 2)) %>%
+    mutate(highlight = case_when(max(Percent) >= 95 | min(Percent) <= 5 ~ 1,
+                                 TRUE ~ 0)) %>%
+    ungroup()
 
 
 
@@ -94,17 +120,18 @@ ui <- fluidPage(
     sidebarLayout(
         sidebarPanel(
             selectInput("bracket", label = "Which Bracket?",
-                        choices = unique(kogmoji_data$bracket), selected = "Bracket 1"),
+                        choices = unique(kogmoji_data$Bracket), selected = "Bracket 1"),
             
             selectInput("round", label = "Which Round?",
-                        choices = unique(kogmoji_data$round), selected = "Round 1")
+                        choices = unique(kogmoji_data$Round), selected = "Round 1")
         ),
 
        
         mainPanel(
             
             tabsetPanel(type = "tabs",
-                        tabPanel("Bracket Plot", plotOutput("bracketplot")),
+                        tabPanel("Interactive Overall Plot", plotlyOutput("line_plot", height = "600px")),
+                        tabPanel("Bracket Plot", plotOutput("bracketplot", height = "600px")),
                         tabPanel("Close Races", tableOutput("close_races")),
                         tabPanel("Top Performers", tableOutput("top_performers")),
                         tabPanel("Worst Performers", tableOutput("worst_performers"))
@@ -118,16 +145,16 @@ ui <- fluidPage(
 server <- function(input, output) {
 
     bracket_dat <- reactive({
-        filter(kogmoji_data, bracket == input$bracket & round == input$round)
+        filter(kogmoji_data, Bracket == input$bracket & Round == input$round)
     })
     
     output$bracketplot = renderPlot({
         ggplot(bracket_dat()) +
-            geom_bar(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, fill = factor(pairing)), stat = "identity") +
-            geom_text(aes(y = forcats::fct_reorder(kogmoji, as.numeric(pairing)), x = pct, label = paste0(round(pct, 1), "%")),
+            geom_bar(aes(y = forcats::fct_reorder(Kogmoji, as.numeric(Matchup)), x = Percent, fill = factor(Matchup)), stat = "identity") +
+            geom_text(aes(y = forcats::fct_reorder(Kogmoji, as.numeric(Matchup)), x = Percent, label = paste0(round(Percent, 1), "%")),
                       nudge_x = 5) +
             theme_bw() +
-            facet_grid(bracket ~ round, scales = "free_y", switch = "y", space = "free") +
+            facet_grid(Bracket ~ Round, scales = "free_y", switch = "y", space = "free") +
             labs(title = paste0("Kogmoji Showdown: ", input$bracket,
                                 ", ", input$round),
                  x = "Percent of votes received",
@@ -135,25 +162,42 @@ server <- function(input, output) {
                  fill = "Matchup") +
             theme(legend.position = "bottom") +
             guides(fill = guide_legend(nrow = 1)) +
-            scale_fill_manual(values = palette[c(7, 1, 4, 2, 5, 3, 6)])
+            scale_fill_brewer(palette = "Dark2") 
     })
     
     output$top_performers = renderTable({
         bracket_dat() %>%
-            slice_max(n = 3, pct, with_ties = TRUE) %>%
-            arrange(desc(pct))
+            select(-Bracket, -Round) %>%
+            slice_max(n = 3, Percent, with_ties = TRUE) %>%
+            arrange(desc(Percent))
     })
     
     output$worst_performers = renderTable({
         bracket_dat() %>%
-            slice_min(n = 3, pct, with_ties = TRUE) %>%
-            arrange(desc(pct))
+            select(-Bracket, -Round) %>%
+            slice_min(n = 3, Percent, with_ties = TRUE) %>%
+            arrange(Percent)
     })
     
     output$close_races = renderTable({
         bracket_dat() %>%
-            filter(pct > 45 & pct < 55)
+            select(-Bracket, -Round) %>%
+            filter(Percent >= 45 & Percent <= 55)
     })
+    
+    output$line_plot = renderPlotly(
+        ggplotly(
+            ggplot(kogmoji_data) +
+                geom_line(aes(x = Round, y = Percent, group = Kogmoji,
+                              color = Kogmoji), size = 0.5) +
+                geom_point(aes(x = Round, y = Percent, group = Kogmoji),
+                           alpha = 0.5, color = "darkgray") +
+                theme_bw() +
+                theme(legend.position = "none") +
+                labs(title = "Overall Results by Round",
+                     subtitle = "Hover over points for interactive labels!") 
+            )
+    )
 
 }
 
