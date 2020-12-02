@@ -128,3 +128,97 @@ worst_performers <- kogmoji_data %>%
 
 close_races <- kogmoji_data %>%
   filter(pct > 45 & pct < 55)
+
+
+
+######################## app troubleshooting ###################################
+ggplot(filter(kogmoji_data, Bracket == "Bracket 1" & Round == "Round 2")) +
+  geom_bar(aes(y = forcats::fct_reorder(Kogmoji, as.numeric(Matchup)), x = Percent, fill = factor(Matchup)), stat = "identity") +
+  geom_text(aes(y = forcats::fct_reorder(Kogmoji, as.numeric(Matchup)), x = Percent, label = paste0(round(Percent, 1), "%")),
+            nudge_x = 5) +
+  theme_bw() +
+  facet_grid(Bracket ~ Round, scales = "free_y", switch = "y", space = "free") +
+  labs(title = paste0("Kogmoji Showdown: ", 1,
+                      ", ", 2),
+       x = "Percent of votes received",
+       y = "",
+       fill = "Matchup") +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(nrow = 1)) +
+  scale_fill_brewer(palette = "Dark2")
+
+
+temp <- kogmoji_data %>%
+  group_by(Kogmoji) %>%
+  mutate(Percent = round(Percent, 2)) %>%
+  mutate(highlight = case_when(max(Percent) >= 95 | min(Percent) <= 5 ~ 1,
+                               TRUE ~ 0)) 
+
+test <- ggplot() +
+  geom_line(data = filter(temp, highlight == 0),
+            aes(x = Round, y = Percent, group = Kogmoji),
+            color = "darkgray", size = 0.5) +
+  geom_line(data = filter(temp, highlight == 1),
+            aes(x = Round, y = Percent, group = Kogmoji,
+            color = Kogmoji), size = 0.75) +
+  geom_point(data = temp, aes(x = Round, y = Percent, group = Kogmoji),
+             alpha = 0.5, color = "darkgray") +
+  # ggrepel::geom_text_repel(data = filter(temp, highlight == 1),
+  #                          aes(x = Round, y = Percent, group = Kogmoji,
+  #                              label = paste0(Kogmoji, ": ", round(Percent, 1), "%"))) +
+  theme_bw() +
+  # facet_grid(Bracket ~ Round, scales = "free_y", switch = "y", space = "free") +
+  theme(legend.position = "none") 
+
+test <- ggplot() +
+  geom_line(data = filter(kogmoji_data, max_round == max(rounds) & Winner == 1),
+            aes(x = Round, y = Percent, group = Kogmoji),
+            color = "darkgray",
+            size = 0.5) +
+  geom_jitter(data = kogmoji_data, 
+              aes(x = Round, y = Percent, group = Kogmoji,
+                  fill = factor(Winner)),
+             stroke = 0, alpha = 0.4, width = 0.05) +
+  # ggrepel::geom_text_repel(data = filter(temp, highlight == 1),
+  #                          aes(x = Round, y = Percent, group = Kogmoji,
+  #                              label = paste0(Kogmoji, ": ", round(Percent, 1), "%"))) +
+  theme_bw() +
+  # facet_grid(Bracket ~ Round, scales = "free_y", switch = "y", space = "free") +
+  theme(legend.position = "none") +
+  scale_fill_manual(values = c("red", "green"))
+
+plotly::ggplotly(test, tooltip = c("y", "x", "group"), mode = "lines")
+
+
+test <- bracket_page %>%
+  html_nodes(css = paste0(".round", round)) %>%
+  html_nodes(css = ".bracketpoll-group-bracketbox") %>%
+  html_nodes(css = ".bracketbox-team-item-image") %>% 
+  html_nodes(xpath = "img") %>% 
+  html_attr("src")
+
+
+kogmoji_data <- kogmoji_data %>%
+  mutate(highlight = case_when(Percent >= 95 | Percent <= 5 ~ 1,
+                               TRUE ~ 0))
+
+test <- ggplot() +
+  #geom_line(data = filter(kogmoji_data, max_round == max(rounds) & Winner == 1),
+  geom_line(data = kogmoji_data, 
+            aes(x = Round, y = Percent, group = Kogmoji),
+            color = "darkgray",
+            size = 0.6) +
+  geom_image(data = kogmoji_data, 
+              aes(x = Round, y = Percent, group = Kogmoji,
+                  image = kogmoji_url),
+             size = .02, #by = "height",
+             position = position_jitter(width = 0.1, height = 2)) +
+  ggrepel::geom_text_repel(data = filter(kogmoji_data, highlight == 1),
+                            aes(x = Round, y = Percent, group = Kogmoji,
+                                label = paste0(Kogmoji, ": ", round(Percent, 1), "%")),
+                           size = 2) +
+  theme_bw() +
+  # facet_grid(Bracket ~ Round, scales = "free_y", switch = "y", space = "free") +
+  theme(legend.position = "none", 
+        panel.grid.major.x = element_blank()) 
+
