@@ -5,8 +5,8 @@ account: jenitivecase
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3303114
-bundleId: 3935012
+bundleId: 3935395
 url: https://jenitivecase.shinyapps.io/Kogmoji_Throwdown/
-when: 1606943954.53343
+when: 1606950487.50871
 asMultiple: FALSE
 asStatic: FALSE

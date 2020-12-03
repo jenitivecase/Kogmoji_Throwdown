@@ -90,7 +90,7 @@ for(i in seq_len(nrow(bracket_links))){
 
 final_bracket_link <- "https://www.polltab.com/bracket-poll/RSDobHzAxk"
 
-final_rounds <- 1
+final_rounds <- 1:2
 
 bracket_page <- read_html(final_bracket_link)
 
@@ -192,7 +192,7 @@ ui <- fluidPage(
     
 
     fluidRow(
-        column(8, offset = 2, 
+        column(10, offset = 1, 
                wellPanel(
                    plotOutput("line_plot", height = "600px")
                ))
@@ -261,8 +261,7 @@ server <- function(input, output) {
                  y = "",
                  fill = "Matchup") +
             theme(legend.position = "bottom") +
-            guides(fill = guide_legend(nrow = 1)) +
-            scale_fill_brewer(palette = "Dark2") 
+            guides(fill = guide_legend(nrow = 1)) 
     })
     
     output$top_performers = renderTable({
